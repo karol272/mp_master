@@ -63,8 +63,7 @@ boton_enviar.grid(row=5, column=0, columnspan=2)
 
 
 # In[11]:
-# Prueba2
-
+# Prueba3
 # Mostrar la ventana
 ventana.mainloop()
 
