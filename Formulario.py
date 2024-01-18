@@ -36,7 +36,7 @@ def enviar_datos():
 
 # In[10]:
 
-
+#prueba enero 1
 # Crear los widgets del formulario
 tk.Label(ventana, text="Items:").grid(row=0, column=0)
 items = tk.Entry(ventana)
