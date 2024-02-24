@@ -25,6 +25,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 .mypy_cache/
+*.pyc
 
 # Unit test / coverage reports
 htmlcov/
@@ -84,7 +85,7 @@ DESCRIPTION
 NAMESPACE
 digest.json
 VERSION.txt
-
+.DS_Store
 # vim
 *.swp
 
