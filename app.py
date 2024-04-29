@@ -13,496 +13,127 @@ import dash
 from dash import html, dcc, dash_table
 from dash.dependencies import Input, Output, State
 import pandas as pd
-import numpy as np
+#import numpy as np
 import joblib
-import time  # Para simular tiempo de procesamiento
 
 # Crear la aplicación Dash
 app = dash.Dash(__name__)
 
-# Campos fijos del formulario divididos en cuatro columnas
-campos_fijos_columna1 = ['Documento', 'Item', 'Razón social proveedor', 'Docto orden', 'Docto solicitud']
-campos_fijos_columna2 = ['Desc item', 'Cantidad', 'UM', 'Precio unit local', 'Valor bruto local']
-campos_fijos_columna3 = ['Fecha', 'Bodega', 'Comprador', 'LINEA', 'SUBLINEA']
-campos_fijos_columna4 = ['Desc País', 'Tipo inventario', 'Lote', 'Tasa local', 'Estado']
+server = app.server
 
+#from sklearn.preprocessing import LabelEncoder
+#cargar datos con extesion csv o cualquier tipo como excel, json, MySQL, etc
+#df = pd.read_excel("Archivo_comparativo28042024Todos.xlsx")
+df = pd.read_excel("Archivo_comparativo30042024TodosCampos.xlsx")
 
+# Opciones para el menú desplegable
+documentos = df['RazonSocial'].unique()
 
-#Documento,Item,Razï¿½n social proveedor,Docto. orden,Docto. solicitud,Desc. item,Cantidad,U.M.,Precio unit. local,Valor bruto local,Fecha,Bodega,
-#Comprador,LINEA,SUBLINEA,Desc. Paï¿½s,Tipo inventario,Lote,Tasa local,Estado
-
-# Crear el DataFrame para almacenar los datos
-df0 = pd.DataFrame(columns=campos_fijos_columna1 + campos_fijos_columna2 + campos_fijos_columna3 + campos_fijos_columna4)
-datosn = pd.DataFrame(columns=campos_fijos_columna1 + campos_fijos_columna2 + campos_fijos_columna3 + campos_fijos_columna4)
-datosp = pd.DataFrame(columns=campos_fijos_columna1 + campos_fijos_columna2 + campos_fijos_columna3 + campos_fijos_columna4)
-# Obtener nombres de columnas
-nombres_columnas = df0.columns.tolist()  # Convertir a lista
-
-
-# Función para generar campos de entrada para una lista de etiquetas
-def generate_input_fields(labels, types=None):
-    if types is None:
-        types = ['text'] * len(labels)
-    fields = []
-    for label, field_type in zip(labels, types):
-        if field_type == 'date':
-            fields.append(html.Div([
-                html.Label(label),
-                dcc.DatePickerSingle(
-                    id=f'input-{label.lower().replace(" ", "-")}',
-                    placeholder=f'Seleccione {label}',
-                    display_format='DD/MM/YYYY',
-                    style={'width': '100%'}
-                )
-            ], style={'margin-bottom': '10px'}))
-        else:
-            fields.append(html.Div([
-                html.Label(label),
-                dcc.Input(
-                    id=f'input-{label.lower().replace(" ", "-")}',
-                    type=field_type,
-                    placeholder=f'Ingrese {label}',
-                    style={'width': '100%'}
-                )
-            ], style={'margin-bottom': '10px'}))
-    return fields
-
-# Función para generar una tabla a partir de un DataFrame
-def generate_table(dataframe):
-    return dash_table.DataTable(
-        id='tabla',
-        columns=[{'name': col, 'id': col} for col in dataframe.columns],
-        data=dataframe.to_dict('records'),
-        style_table={'overflowX': 'scroll'},
-        style_cell={'minWidth': '150px', 'width': '150px', 'maxWidth': '150px'},
-        style_data={'whiteSpace': 'normal'},
-    )
-
-# Diseñar el layout de la aplicación
+# Layout con un menú desplegable, un botón, y una tabla para mostrar datos relacionados
 app.layout = html.Div([
-    html.H1('Formulario de Datos de Proveedores', style={'text-align': 'center', 'color': '#007bff', 'font-family': 'Arial, sans-serif'}),
-    html.H2('Ejemplo de Documento: SNA00000019', style={'text-align': 'center', 'color': '#1919', 'font-family': 'Arial, sans-serif'}),
-
-    html.Div([
-        # Primera columna de campos de entrada
-        html.Div(generate_input_fields(campos_fijos_columna1, types=['text', 'number', 'text', 'text', 'text']), style={'float': 'left', 'width': '25%'}),
-
-        # Segunda columna de campos de entrada
-        html.Div(generate_input_fields(campos_fijos_columna2, types=['text', 'number', 'text', 'number', 'text']), style={'float': 'left', 'width': '25%'}),
-
-        # Tercera columna de campos de entrada
-        html.Div(generate_input_fields(campos_fijos_columna3, types=['text', 'number', 'text', 'text', 'text']), style={'float': 'left', 'width': '25%'}),
-
-        # Cuarta columna de campos de entrada
-        html.Div(generate_input_fields(campos_fijos_columna4, types=['text', 'text', 'text', 'number', 'text']), style={'float': 'left', 'width': '25%'}),
-
-        html.Div(style={'clear': 'both'}),  # Limpiar el float para evitar que otros elementos se vean afectados
-        html.Button('Enviar', id='submit-button', n_clicks=0, style={'margin-top': '10px', 'float': 'right'}),
-    ], style={'width': '80%', 'margin': 'auto', 'padding': '20px', 'border': '1px solid #ccc', 'border-radius': '5px', 'background-color': '#f8f9fa'}),
-
-    html.Div(id='tabla-datos'),
-    
-    html.Button('Preprocesar', id='preprocesar-button', n_clicks=0, style={'margin-top': '20px'}),
-    dcc.Loading(
-        id='loading',
-        type='circle',  # Tipo de indicador de carga
-        children=[html.Div(id='output-preprocesamiento')],  # Donde aparecerá el resultado
-        style={'margin-top': '20px'}
+    html.H1('Formulario para predecir el Tipo de Proveedores Actuales', style={'text-align': 'center', 'color': '#007bff', 'font-family': 'Arial, sans-serif'}),
+    dcc.Dropdown(
+        id='document-dropdown',
+        options=[{'label': doc, 'value': doc} for doc in documentos],
+        placeholder='Selecciona una Razón Social y presiona Predecir.'
     ),
-    html.Div(id='output-preprocesamiento'),
-    
-    html.Button('ObtenerDocumento', id='obtenerdocumento-button', n_clicks=0, style={'margin-top': '20px'}),
-    html.Div(id='output-obtenerdocumento'),
-    
-    html.Button('Limpiar Datos', id='limpiardatos-button', n_clicks=0, style={'margin-top': '20px'}),
-    dcc.Location(id='url', refresh=True),  # Para redireccionar a la misma página
-    html.Div(id='output-limpiardatos'),
+    html.Button("Predecir", id='predict-button', n_clicks=0),
+    dash_table.DataTable(
+        id='selected-data',
+        columns=[{'name': col, 'id': col} for col in df.columns],  # Configuración de columnas
+        data=[],  # Datos vacíos inicialmente
+        style_table={'overflowX': 'auto'}
+    ),
+    html.Div(id='prediction-result')  # Para mostrar el resultado de la predicción
+])
 
-    html.Button('Predecir', id='predecir-button', n_clicks=0, style={'margin-top': '20px'}),
-    html.Div(id='output-prediccion')
-], style={'background-image': 'url("/assets/fondo.jpg")', 'background-size': 'cover', 'background-position': 'center'})
-
-
-# Callback para manejar los datos ingresados y preprocesarlos
 @app.callback(
-    Output('tabla-datos', 'children'),
-    [Input('submit-button', 'n_clicks')],
-    [State(f'input-{label.lower().replace(" ", "-")}', 'value') for label in campos_fijos_columna1 + campos_fijos_columna2 + campos_fijos_columna3 + campos_fijos_columna4]
+    Output('selected-data', 'data'),  # Actualizar los datos de la tabla
+    [Input('document-dropdown', 'value')]  # Escuchar la selección del menú desplegable
 )
-def update_table(n_clicks, *args):
-    global datosn
-    if n_clicks > 0:
-        # Agregar los datos al DataFrame
-        df0.loc[len(df0)] = args
-        datosn = df0.copy()
-
-    # Mostrar los datos en una tabla HTML
-    return generate_table(datosn)
-
-# Callback para preprocesar los datos
-@app.callback(
-    Output('output-preprocesamiento', 'children'),
-    [Input('preprocesar-button', 'n_clicks')],
-    [State('tabla-datos', 'children')]
-)
-def preprocesar_data(n_clicks, tabla_datos):
-    global datosp
-    global datospd
-    global datosn
-    global df0
-    global nuevo_documento
+def mostrar_datos(documento_seleccionado):
+    if documento_seleccionado:
+        # Filtrar el DataFrame para obtener datos del documento seleccionado
+        df_filtrado = df[df['RazonSocial'] == documento_seleccionado].copy()
+        
+        # Seleccionar las columnas que no empiezan con "Pre"
+        #columnas_a_mostrar = [columna for columna in df_filtrado.columns if not columna.startswith('Pre')]
     
-    if n_clicks > 0:
+        # Obtener los datos correspondientes a las columnas seleccionadas y borrarlos
+        #datos = df_filtrado[columnas_a_mostrar].to_dict('records')
         
-        # Indicar que se está preprocesando
-        #preprocesando_mensaje = "Nos encontramos preprocesando la información..."
+        # Identificar las columnas que comienzan con "Pre"
+        #columnas_a_eliminar = [col for col in df_filtrado.columns if col.startswith("Pre")]
+
+        # Eliminar las columnas identificadas
+        #df_filtrado.drop(columnas_a_eliminar, axis=1, inplace=True)
         
-        # Supongamos que simplemente queremos mostrar los datos preprocesados en este caso
-        datosp = datosn.copy()  # Guardar los datos preprocesados en la variable datosp
-        # Mostrar los datos preprocesados en una tabla HTML junto con los datos actuales
-        #BOTON PREPROCESAR
-        #from sklearn.preprocessing import LabelEncoder
-        #cargar datos con extesion csv o cualquier tipo como excel, json, MySQL, etc
-        df = pd.read_excel("Archivo_preprocesadoFinal21042024.xlsx")
-        #datos1 = pd.read_csv('Archivo_preprocesadoFinal09042024.csv')
-        #df = pd.read_csv('Ejercico_4.csv', index_col=0, encoding='latin-1')
-        #df = datos1.drop(['Tipo docto.','Docto. referencia', 'Fecha', 'Sucursal' ], axis=1)
-        df = df.replace("               ",np.nan)
-        abc=df.columns
-        for i in abc:
-            df[i].fillna(df[i].mode()[0], inplace=True)
-
-        #f= df.dtypes
-        #d= df.describe(include="all")
-        #e= df.isna().sum(axis=0)/len(df)
-
-        # data = datos1.rename({'Documento':'Docto_orden':'Item':'Docto_referencia':'Desc_item':'Proveedor':'Sucursal':'Razon_social_proveedor':'Desc_Pais':'Cantidad':'UM':'Precio_unit_local':'Valor_bruto_local':'Fecha':'Bodega':'Comprador':'LINEA':'SUBLINEA':'Tipo_inventario':'Ubicacion':'Tasa_local':'Lote':'Estado':'Column1':'_1':'_2':'_3'})
-        # datos
-        # datoNumerico = datos[["Item"]].astype(float)
-
-        # f= datos.dtypes
-        #baseDatos = round (df.fillna(df.median()))# Se reemplazan los NAN por la mediana
-        #d= df.describe(include="all") # Describe cada columna para ver si son columnas numericas o nominales
-        #e= df.isna().sum(axis=0)/len(df) # Verifica si la BD tiene NAN
-
-        # Obtén el número de columnas en el DataFrame
-        #num_columnas = len(df.columns)
-
-        nombre_documento = "Documento" # Nombre de la columna de la que quieres obtener el último valor
-
-        # Eliminar el guion medio de los valores en la columna 'documento'
-        df[nombre_documento] = df[nombre_documento].str.replace('-', '')
-        df[nombre_documento] = df[nombre_documento].str.replace(' ', '')
-
-        #maximo_documento = df[nombre_documento].max()# Obtén el último valor de la columna
-
-        # Nombre de las columnas donde buscar e insertar la nueva fila
-        columna_documento = 'Documento'
-        columna_predocumento = 'PreDocumento'
-        columna_preitem = 'PreItem'
-        columna_prerazonsocial = 'PreRazonSocial'
-        columna_predoctoorden = 'PreDoctoOrden'
-        columna_predoctosolicitud = 'PreDoctoSolicitud'
-        columna_predescitem = 'PreDescItem'
-        columna_precantidad = 'PreCantidad'
-        columna_preum = 'PreUM'
-        columna_prepreciounitlocal = 'PrePrecioUnitLocal'
-        columna_prevalorbrutolocal = 'PreValorBrutoLocal'
-        columna_prefecha = 'PreFecha'
-        columna_prebodega = 'PreBodega'
-        columna_precomprador = 'PreComprador'
-        columna_prelinea = 'PreLINEA'
-        columna_presublinea = 'PreSUBLINEA'
-        columna_predescpais = 'PreDescPais'
-        columna_pretipoinventario = 'PreTipoInventario'
-        columna_prelote = 'PreLote'
-        columna_pretasalocal = 'PreTasaLocal'
-        columna_preestado = 'PreEstado'
-
-
-
-        # Función para encontrar el último documento existente y su predocumento asociado
-        def obtener_ultimo_documento_y_predocumento():
-            ultimo_documento = df[columna_documento].iloc[-1]
-            ultimo_predocumento = df[columna_predocumento].iloc[-1]
-            return ultimo_documento, ultimo_predocumento
-
-        # Función para generar el nuevo documento y predocumento manteniendo el mismo consecutivo de letras
-        def generar_nuevo_documento_y_predocumento(ultimo_documento, ultimo_predocumento):
-            consecutivo_letras = ultimo_documento[:3]
-            numero_documento = int(ultimo_documento[3:]) + 1
-            nuevo_documento = consecutivo_letras + str(numero_documento).zfill(8)
-            nuevo_predocumento = ultimo_predocumento + 1
-            return nuevo_documento, nuevo_predocumento
-
-        # Función para obtener el próximo número de PreItem
-        def obtener_proximo_preitem():
-            return df[columna_preitem].max() + 1
-
-        # Función para obtener el próximo número de PreRazonSocial
-        def obtener_proximo_prerazonsocial():
-            return df[columna_prerazonsocial].max() + 1
-
-        # Función para obtener el próximo número de PreDoctoOrden
-        def obtener_proximo_predoctoorden():
-            return df[columna_predoctoorden].max() + 1
-
-        # Función para obtener el próximo número de PreDoctoSolicitud
-        def obtener_proximo_predoctosolicitud():
-            return df[columna_predoctosolicitud].max() + 1
-
-        # Función para obtener el próximo número de PreCantidad
-        def obtener_proximo_precantidad():
-            return df[columna_precantidad].max() + 1
-
-        # Función para obtener el próximo número de PrePrecioUnitLocal
-        def obtener_proximo_prepreciounitlocal():
-            return df[columna_prepreciounitlocal].max() + 1
-
-        # Función para obtener el próximo número de PreValorBrutoLocal
-        def obtener_proximo_prevalorbrutolocal():
-            return df[columna_prevalorbrutolocal].max() + 1
-
-        # Función para obtener el próximo número de PreFecha
-        def obtener_proximo_prefecha():
-            return df[columna_prefecha].max() + 1
-
-        # Función para obtener el próximo número de PreTasaLocal
-        def obtener_proximo_pretasalocal():
-            return df[columna_pretasalocal].max() + 1
-
-        # Función para obtener el próximo número de PreDescItem
-        def obtener_proximo_predescitem():
-            return df[columna_predescitem].max() + 1
-
-        # Función para obtener el próximo número de PreUM
-        def obtener_proximo_preum():
-            return df[columna_preum].max() + 1
-
-        # Función para obtener el próximo número de PreBodega
-        def obtener_proximo_prebodega():
-            return df[columna_prebodega].max() + 1
-
-        # Función para obtener el próximo número de PreComrador
-        def obtener_proximo_precomprador():
-            return df[columna_precomprador].max() + 1
-
-        # Función para obtener el próximo número de PreLinea
-        def obtener_proximo_prelinea():
-            return df[columna_prelinea].max() + 1
-
-        # Función para obtener el próximo número de PreSublinea
-        def obtener_proximo_presublinea():
-            return df[columna_presublinea].max() + 1
-
-        # Función para obtener el próximo número de PreDescPais
-        def obtener_proximo_predescpais():
-            return df[columna_predescpais].max() + 1
-
-        # Función para obtener el próximo número de PreTipoInventario
-        def obtener_proximo_pretipoinventario():
-            return df[columna_pretipoinventario].max() + 1
-
-        # Función para obtener el próximo número de PreLote
-        def obtener_proximo_prelote():
-            return df[columna_prelote].max() + 1
-
-        # Función para obtener el próximo número de PreEstado
-        def obtener_proximo_preestado():
-            return df[columna_preestado].max() + 1
-
-        # Valor a buscar
-        #valor_buscar = 'SNA00000018'
-        #valor_buscar = datosn
-        valor_buscar = datosp['Documento'].iloc[0]
-
-        # Verificar si el valor existe en la columna 'Documento'
-        while valor_buscar in df[columna_documento].values:
-            
-            return html.Div([
-                html.H3("Documento ya existe"),
-                html.P(f"El documento del proveedor '{valor_buscar}' ya está registrado en la Base de Datos, por favor ingresar uno nuevo, para preprocesar la información y así poder hacer la predicción del tipo de Proveedor."),
-
-            ])        
-            
-            #print("El documento", valor_buscar, "ya existe.")
-            #nuevo_valor_buscar = input("Por favor, ingrese el mismo documento incrementado en 1: ")
-            #valor_buscar = nuevo_valor_buscar
-
-        # Si el valor del documento no existe, generar uno nuevo basado en el último documento existente en el DataFrame
-        ultimo_documento, ultimo_predocumento = obtener_ultimo_documento_y_predocumento()
-        nuevo_documento, nuevo_predocumento = generar_nuevo_documento_y_predocumento(ultimo_documento, ultimo_predocumento)
-        #nueva_fila = pd.DataFrame({columna_documento: [nuevo_documento], columna_predocumento: [nuevo_predocumento]})
-        nuevo_preitem = obtener_proximo_preitem()
-        nuevo_prerazonsocial = obtener_proximo_prerazonsocial()
-        nuevo_predoctoorden = obtener_proximo_predoctoorden()
-        nuevo_predoctosolicitud = obtener_proximo_predoctosolicitud()
-        nuevo_precantidad = obtener_proximo_precantidad()
-        nuevo_prepreciounitlocal = obtener_proximo_prepreciounitlocal()
-        nuevo_prevalorbrutolocal = obtener_proximo_prevalorbrutolocal()
-        nuevo_prefecha = obtener_proximo_prefecha()
-        nuevo_pretasalocal = obtener_proximo_pretasalocal()
-        nuevo_predescitem = obtener_proximo_predescitem()
-        nuevo_preum = obtener_proximo_preum()
-        nuevo_prebodega = obtener_proximo_prebodega()
-        nuevo_precomprador = obtener_proximo_precomprador()
-        nuevo_prelinea = obtener_proximo_prelinea()
-        nuevo_presublinea = obtener_proximo_presublinea()
-        nuevo_predescpais = obtener_proximo_predescpais()
-        nuevo_pretipoinventario = obtener_proximo_pretipoinventario()
-        nuevo_prelote = obtener_proximo_prelote()
-        nuevo_preestado = obtener_proximo_preestado()
-
-
-        # Crea nueva fila y la adiciona al DataFrame df
-
-        nueva_fila = pd.DataFrame({columna_documento: [nuevo_documento], columna_predocumento: [nuevo_predocumento],
-        columna_preitem: [nuevo_preitem],columna_prerazonsocial: [nuevo_prerazonsocial],columna_predoctoorden: [nuevo_predoctoorden],
-        columna_predoctosolicitud: [nuevo_predoctosolicitud],columna_predescitem: [nuevo_predescitem],columna_precantidad: [nuevo_precantidad],
-        columna_preum: [nuevo_preum],columna_prepreciounitlocal: [nuevo_prepreciounitlocal],columna_prevalorbrutolocal: [nuevo_prevalorbrutolocal],
-        columna_prefecha: [nuevo_prefecha],columna_prebodega: [nuevo_prebodega],columna_precomprador: [nuevo_precomprador],columna_prelinea: [nuevo_prelinea],
-        columna_presublinea: [nuevo_presublinea],columna_predescpais: [nuevo_predescpais],columna_pretipoinventario: [nuevo_pretipoinventario],
-        columna_prelote: [nuevo_prelote], columna_pretasalocal: [nuevo_pretasalocal],columna_preestado: [nuevo_preestado]})
-        df = df.append(nueva_fila, ignore_index=True)
+        # Eliminar la columna "Documento"
+        #df_filtrado.drop('Documento', axis=1, inplace=True)  # Eliminar la columna
         
-        # Guardar los cambios en un nuevo archivo Excel
-        #df.to_excel('Archivo_preprocesadoFinal21042024.xlsx', index=False)
-
-        # Eliminar 'Documento' y reemplazar el DataFrame original
-        df = df.drop('Documento', axis=1)
-
         # Eliminar las primeras 3 letras de cada nombre de columna
-        df.columns = df.columns.str.slice(3)
+        #df.columns = df_filtrado.columns.str.slice(3)
 
-        # Obtener la última fila del archivo CSV
-        datospre = df.iloc[-1]
-
-        # Convertir la Serie en un DataFrame con una sola fila y varias columnas
-        datospreprocesados = pd.DataFrame([datospre.values], columns=[f'Columna_{i+1}' for i in range(len(datospre))])
-
-        datospreprocesados.columns = nombres_columnas
-
-
-        # Supongamos que simplemente queremos mostrar los datos preprocesados en este caso
-        datospd = datospreprocesados.copy()  # Guardar los datos preprocesados en la variable datosp
-        
-        # Hacer un procesamiento simulado
-        time.sleep(3)  # Simular un proceso de 3 segundos
-
-        # Mostrar los datos preprocesados en una tabla HTML junto con los datos actuales
-       # table = dash_table.DataTable(
-       # id='tabla-preprocesada',
-       # columns=[{'name': col, 'id': col} for col in datosp.columns],
-       # data=datosp.to_dict('records'),
-       # style_table={'overflowX': 'scroll'},
-       # style_cell={'minWidth': '150px', 'width': '150px', 'maxWidth': '150px'},
-       # style_data={'whiteSpace': 'normal'},
-       #         )
-
-        return html.Div([
-            html.H3('Preprocesamiento'),
-            generate_table(datospd)
-                ])
-    else:
-        return "Presiona el botón para iniciar el preprocesamiento de la información."
+        # Convertir a formato compatible con `dash_table.DataTable`
+        #return datos
+        return df_filtrado.to_dict('records')  # Devuelve como lista de diccionarios
     
+    return []
+
 # Ejecutar la aplicación
 if __name__ == '__main__':
     app.run_server(debug=True)
+
+def predecir_data(data):
+    # Simular una predicción con el modelo cargado
+    modelo = joblib.load('Modelo_KNN_Ordinal_Entrenado.pkl')  # Carga tu modelo entrenado
+    resultado = modelo.predict(data)  # Predicción sobre datos preprocesados
     
-# Callback para preprocesar los datos
-#@app.callback(
-#    Output('output-preprocesamiento', 'children'),
-#    [Input('preprocesar-button', 'n_clicks')],
-#    prevent_initial_call=True  # Para evitar ejecución al inicio
-#    [State('tabla-datos', 'children')]
-#)
-
-#def procesar_y_finalizar(n_clicks, tabla_datos):
-#    if n_clicks > 0:
-#        # Simular preprocesamiento
-#        time.sleep(30)  # Simular 3 segundos de procesamiento
-        
-        # Mostrar el mensaje final al terminar
-#        return "Preprocesamiento completado con éxito."
-    
-#    return "Presiona el botón para iniciar el preprocesamiento."
-    
-# Callback para Limpiar Datos
-@app.callback(
-    Output('url', 'href'),
-    [Input('limpiardatos-button', 'n_clicks')]
-)
-
-def delete_table(n_clicks):
-    global datosn
-    global df0
-    if n_clicks > 0:
-         # Limpiar datosn y df0 si el valor existe
-            #datosn = None
-            #df0 = pd.DataFrame()  # Limpiar el DataFrame
-            datosn = pd.DataFrame()
-            #df0 = datosn.copy()
-            generate_table(datosn)  # Generar tabla vacía para limpiar
-            
-            return "/"  # Redirige a la misma página (simula refresco)
-    return dash.no_update  # No hace nada si no hay interacción
-                
-# Ejecutar la aplicación
-if __name__ == '__main__':
-  app.run_server(debug=True)
-  
- # Callback para Obtener Documento
-@app.callback(
-   Output('output-obtenerdocumento', 'children'),
-    [Input('obtenerdocumento-button', 'n_clicks')],
-    [State(f'input-{label.lower().replace(" ", "-")}', 'value') for label in campos_fijos_columna1 + campos_fijos_columna2 + campos_fijos_columna3 + campos_fijos_columna4]
-)
-def procesar_formulario(n_clicks, *valores):
-    if n_clicks > 0:
-        # Obtener el valor del campo "Documento"
-        valor_documento = valores[0]
-        # Realizar operaciones con el valor del campo "Documento"
-        mensaje = f"El valor del campo ingresado en 'Documento' es: {valor_documento} y el valor real en Base de Datos es: {nuevo_documento}"
-        return mensaje
-
-# Callback para predecir los datos
-@app.callback(
-    Output('output-prediccion', 'children'),
-    [Input('predecir-button', 'n_clicks')],
-    [State('output-preprocesamiento', 'children')]
-)
-def predecir_data(n_clicks, tabla_preprocesada):
-    global datosprepro
-    if n_clicks > 0:
-
-        #ruta_archivo = 'Prueba2MediaVariableOrdinalValidandoKNN.csv'
-        #df = pd.read_csv(ruta_archivo)
-        #df = pd.read_csv('2.csv')
-        datosprepro = datospd.copy()  # Copia los datos preprocesados
-        modelo = joblib.load('Modelo_KNN_Ordinal_Entrenado.pkl')  # Carga tu modelo entrenado
-        prediction = modelo.predict(datosprepro)  # Realiza la predicción
-        
-        # Interpretar el resultado
-        if prediction[0] == 1:
-            mensaje = f"Predicción {prediction[0]}: El proveedor es Bueno"
-        elif prediction[0] == 2:
-            mensaje = f"Predicción {prediction[0]}: El proveedor es Malo"
-        else:
-            mensaje = f"Predicción {prediction[0]}: Predicción Desconocida"
-
-        # Crear el DataFrame para la tabla
-        df = pd.DataFrame({'Predicción': [mensaje]})
-
-        # Generar la tabla y mostrar el resultado
-        prediction_table = generate_table(df)
-        
-        return html.Div([
-            html.H3('Resultado de la Predicción usando el Algortimo Supervisado KNN'),
-            prediction_table
-        ])
+    if resultado[0] == 1:
+        return "El proveedor es Bueno."
+    elif resultado[0] == 2:
+        return "El proveedor es Malo."
     else:
-        return html.Div("Haga clic en el botón Predecir para conocer si el Proveedor Ingresado es Bueno o Malo.")
+        return f"Resultado desconocido: {resultado[0]}."
+
+@app.callback(
+    Output('prediction-result', 'children'),  # Para mostrar el resultado de la predicción
+    [Input('predict-button', 'n_clicks')],
+    [State('document-dropdown', 'value')]  # Para obtener el documento seleccionado
+)
+def predecir(n_clicks, documento_seleccionado):
+    if n_clicks > 0 and documento_seleccionado:
+        # Filtrar el DataFrame para obtener datos relacionados con el documento seleccionado
+        df_filtrado = df[df['RazonSocial'] == documento_seleccionado].copy()  # Copiar para evitar cambios en el original
+        
+        # Eliminar las columnas originales que no se usan para predecir
+        df_filtrado.drop('Documento', axis=1, inplace=True)  # Eliminar la columna
+        df_filtrado.drop('Item', axis=1, inplace=True)
+        df_filtrado.drop('RazonSocial', axis=1, inplace=True)
+        df_filtrado.drop('DoctoOrden', axis=1, inplace=True)
+        df_filtrado.drop('DoctoSolicitud', axis=1, inplace=True)
+        df_filtrado.drop('DescItem', axis=1, inplace=True)
+        df_filtrado.drop('Cantidad', axis=1, inplace=True)
+        df_filtrado.drop('UM', axis=1, inplace=True)
+        df_filtrado.drop('PrecioUnitLocal', axis=1, inplace=True)
+        df_filtrado.drop('ValorBrutoLocal', axis=1, inplace=True)
+        df_filtrado.drop('Fecha', axis=1, inplace=True)
+        df_filtrado.drop('Bodega', axis=1, inplace=True)
+        df_filtrado.drop('Comprador', axis=1, inplace=True)
+        df_filtrado.drop('LINEA', axis=1, inplace=True)
+        df_filtrado.drop('SUBLINEA', axis=1, inplace=True)
+        df_filtrado.drop('DescPais', axis=1, inplace=True)
+        df_filtrado.drop('TipoInventario', axis=1, inplace=True)
+        df_filtrado.drop('Lote', axis=1, inplace=True)
+        df_filtrado.drop('TasaLocal', axis=1, inplace=True)
+        df_filtrado.drop('Estado', axis=1, inplace=True)
+        
+        # Llamar a la función de predicción
+        resultado = predecir_data(df_filtrado)  # Pasar los datos sin las columnas originales anteriores
+        
+        return resultado
+    
+    return ""
 
 # Ejecutar la aplicación
 if __name__ == '__main__':
