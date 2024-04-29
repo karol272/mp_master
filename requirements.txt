@@ -31,3 +31,4 @@ urllib3==2.2.1
 Werkzeug==3.0.1
 zipp==3.17.0
 joblib==0.17.0
+openpyxl==3.0.5
